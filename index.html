@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KJP Layout | 6-Point GCP Affine Projection GIS Viewer</title>
-  <meta name="description" content="High-precision interactive real estate layout viewer with 6-point Ground Control Point (GCP) affine projection matrix, CSS3 3D transformation engine, and Esri World Imagery satellite terrain." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>KJP Layout | Spacer Interactive 3D Plot Viewer</title>
+  <meta name="description" content="Next-generation interactive real estate layout viewer powered by Spacer. High-resolution satellite imagery, 6-point GCP affine georeferencing, live GPS location, and real-time inventory exploration." />
 
-  <!-- Google Fonts: Inter & Outfit -->
+  <!-- Google Fonts: Inter & Outfit & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -18,224 +18,286 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-layout">
-    <!-- Top Navigation Bar -->
-    <header class="navbar glass-panel">
-      <div class="nav-brand">
-        <div class="gis-live-badge">
-          <span class="live-pulse"></span>
-          <span class="live-title">6-POINT GCP AFFINE GIS</span>
+  <div class="app-layout" id="appLayout">
+    <!-- 1. Top Overlay Bar (Spacer Pattern) -->
+    <header class="top-overlay-bar glass-panel" id="topNav">
+      <div class="brand-cluster">
+        <div class="spacer-logo-badge">
+          <span class="spacer-cube-icon">❖</span>
+          <span class="spacer-brand-name">SPACER</span>
         </div>
-        <div class="brand-text-group">
-          <h1 class="brand-heading">KJP Layout Masterplan</h1>
-          <span class="brand-tagline">Esri Satellite HD &bull; CSS3 Matrix3D Georeferencing</span>
-        </div>
-      </div>
-
-      <!-- Quick KPI Badges -->
-      <div class="stats-pills" id="statsPills">
-        <div class="kpi-pill active" data-filter="all" id="filterAll" title="View all plots">
-          <span class="kpi-label">Total:</span>
-          <span class="kpi-count" id="kpiTotal">10</span>
-        </div>
-        <div class="kpi-pill kpi-available" data-filter="Available" id="filterAvailable" title="Filter Available">
-          <span class="kpi-dot dot-available"></span>
-          <span class="kpi-label">Available:</span>
-          <span class="kpi-count" id="kpiAvailable">6</span>
-        </div>
-        <div class="kpi-pill kpi-booked" data-filter="Booked" id="filterBooked" title="Filter Booked">
-          <span class="kpi-dot dot-booked"></span>
-          <span class="kpi-label">Booked:</span>
-          <span class="kpi-count" id="kpiBooked">2</span>
-        </div>
-        <div class="kpi-pill kpi-sold" data-filter="Sold" id="filterSold" title="Filter Sold">
-          <span class="kpi-dot dot-sold"></span>
-          <span class="kpi-label">Sold:</span>
-          <span class="kpi-count" id="kpiSold">2</span>
+        <div class="project-meta">
+          <h1 class="project-title">KJP Layout</h1>
+          <span class="project-subtitle">Masterplan CAD &bull; Satellite GIS</span>
         </div>
       </div>
 
-      <!-- Search Box -->
-      <div class="nav-search">
-        <div class="search-input-wrapper">
-          <svg class="search-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="text" id="searchInput" placeholder="Find Plot (e.g. 104)..." autocomplete="off" />
-          <button id="searchClearBtn" class="search-clear-btn" style="display:none;">&times;</button>
-          <div class="search-dropdown glass-panel" id="searchDropdown"></div>
+      <!-- Quick Inventory Filter Chips (Status) -->
+      <div class="filter-chips-scroll" id="statusFilterChips">
+        <button type="button" class="filter-chip active" data-status="all" id="chipAll">
+          <span class="chip-label">All Units</span>
+          <span class="chip-count" id="kpiTotal">341</span>
+        </button>
+        <button type="button" class="filter-chip chip-available" data-status="Available" id="chipAvailable">
+          <span class="status-dot dot-available"></span>
+          <span class="chip-label">Available</span>
+          <span class="chip-count" id="kpiAvailable">239</span>
+        </button>
+        <button type="button" class="filter-chip chip-booked" data-status="Booked" id="chipBooked">
+          <span class="status-dot dot-booked"></span>
+          <span class="chip-label">Booked</span>
+          <span class="chip-count" id="kpiBooked">51</span>
+        </button>
+        <button type="button" class="filter-chip chip-sold" data-status="Sold" id="chipSold">
+          <span class="status-dot dot-sold"></span>
+          <span class="chip-label">Sold</span>
+          <span class="chip-count" id="kpiSold">51</span>
+        </button>
+      </div>
+
+      <!-- Action Exporters & Search -->
+      <div class="top-bar-actions">
+        <!-- Live Autocomplete Search -->
+        <div class="search-container">
+          <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="plotSearchInput" placeholder="Search Plot # (e.g. 104)..." autocomplete="off" />
+          <button class="clear-search-btn" id="clearSearchBtn" style="display: none;">&times;</button>
+          <div class="search-results-popover glass-panel" id="searchDropdown"></div>
         </div>
+
+        <!-- Exporters: Download PDF & Filter Panel Toggle -->
+        <button type="button" class="action-btn-pill" id="downloadBrochureBtn" title="Download Masterplan PDF Brochure">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span class="btn-text-hide-sm">Brochure</span>
+        </button>
+        <button type="button" class="action-btn-pill active-accent" id="toggleFilterDrawerBtn" title="Advanced Filters (Facing, Size, Corner)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+          <span class="btn-text-hide-sm">Filters</span>
+        </button>
       </div>
     </header>
 
-    <!-- Map Canvas & Viewport -->
-    <main class="map-container">
-      <div id="map" class="map-element"></div>
+    <!-- Main Viewport Canvas -->
+    <main class="viewport-stage" id="viewportStage">
+      <div id="map" class="map-viewport"></div>
 
-      <!-- Top-Left Developer Opacity & GCP Dashboard -->
-      <aside class="dev-opacity-dashboard glass-panel" id="devDashboard">
-        <div class="dashboard-header">
-          <div class="header-left">
-            <span class="dashboard-icon">📐</span>
-            <span class="dashboard-title">GCP Matrix Overlay Control</span>
-          </div>
-          <button class="dash-toggle-btn" id="toggleDashBtn" title="Collapse Dashboard">
-            <svg class="dash-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          </button>
+      <!-- Advanced Filter Floating Drawer (Spacer Pattern) -->
+      <aside class="advanced-filter-drawer glass-panel" id="advancedFilterDrawer" style="display: none;">
+        <div class="drawer-header">
+          <span class="drawer-title">Inventory Filters</span>
+          <button class="drawer-close-btn" id="closeFilterDrawerBtn">&times;</button>
         </div>
 
-        <div class="dashboard-content" id="dashboardContent">
-          <!-- Opacity Slider -->
-          <div class="dash-control-group">
-            <div class="slider-header-row">
-              <label for="blueprintOpacitySlider" class="dash-label">Blueprint Opacity</label>
-              <span class="slider-percent" id="opacityDisplay">85%</span>
-            </div>
-            <input type="range" id="blueprintOpacitySlider" min="0" max="100" value="85" class="custom-range" />
-            <div class="range-presets">
-              <button type="button" class="preset-pill" data-val="0">0% Satellite</button>
-              <button type="button" class="preset-pill" data-val="50">50%</button>
-              <button type="button" class="preset-pill active" data-val="85">85%</button>
-              <button type="button" class="preset-pill" data-val="100">100% CAD</button>
+        <div class="drawer-content">
+          <!-- Orientation / Facing Filter Chips -->
+          <div class="filter-group">
+            <label class="filter-group-label">Directional Facing</label>
+            <div class="facing-chips-grid">
+              <button type="button" class="facing-chip active" data-facing="all">All Facings</button>
+              <button type="button" class="facing-chip" data-facing="East-Facing">🧭 East</button>
+              <button type="button" class="facing-chip" data-facing="North-Facing">🧭 North</button>
+              <button type="button" class="facing-chip" data-facing="West-Facing">🧭 West</button>
+              <button type="button" class="facing-chip" data-facing="South-Facing">🧭 South</button>
             </div>
           </div>
 
-          <!-- Blueprint Color Style -->
-          <div class="dash-control-group">
-            <label class="dash-label">Blueprint Line Theme</label>
-            <div class="theme-buttons">
-              <button type="button" class="theme-btn active" data-theme="white" title="Crisp White Blueprint Glow (High Satellite Contrast)">
-                <span class="swatch swatch-white"></span>
-                <span>White Glow</span>
-              </button>
-              <button type="button" class="theme-btn" data-theme="black" title="Original CAD Dark Ink Lines">
-                <span class="swatch swatch-black"></span>
-                <span>CAD Black</span>
-              </button>
-              <button type="button" class="theme-btn" data-theme="cyan" title="Cyan Matrix Cyber Lines">
-                <span class="swatch swatch-cyan"></span>
-                <span>Cyber Cyan</span>
-              </button>
+          <!-- Plot Category: Regular vs Corner -->
+          <div class="filter-group">
+            <label class="filter-group-label">Plot Classification</label>
+            <div class="category-toggle-group">
+              <button type="button" class="cat-pill active" data-category="all">All Parcels</button>
+              <button type="button" class="cat-pill" data-category="corner">⭐ Corner Only</button>
+              <button type="button" class="cat-pill" data-category="standard">Standard Plots</button>
             </div>
           </div>
 
-          <!-- Live 6-Point GCP Matrix Telemetry -->
-          <div class="dash-control-group">
-            <div class="telemetry-header">
-              <span class="dash-label">Affine Transformation Metrics</span>
-              <button type="button" class="gcp-pins-toggle" id="toggleGcpPinsBtn" title="Toggle GCP Ground Pins on Map">
-                <span id="gcpPinsText">Hide 6 GCPs</span>
-              </button>
+          <!-- Area Range Threshold -->
+          <div class="filter-group">
+            <div class="slider-label-row">
+              <label class="filter-group-label">Minimum Area</label>
+              <span class="slider-display" id="minAreaDisplay">All Sizes</span>
             </div>
-            <div class="matrix-metrics-grid">
-              <div class="metric-cell">
-                <span class="m-key">Scale X:</span>
-                <span class="m-val" id="telemetryScaleX">1.0000</span>
-              </div>
-              <div class="metric-cell">
-                <span class="m-key">Scale Y:</span>
-                <span class="m-val" id="telemetryScaleY">1.0000</span>
-              </div>
-              <div class="metric-cell">
-                <span class="m-key">Rotation:</span>
-                <span class="m-val" id="telemetryRotation">0.00&deg;</span>
-              </div>
-              <div class="metric-cell">
-                <span class="m-key">Skew:</span>
-                <span class="m-val" id="telemetrySkew">0.00&deg;</span>
-              </div>
-              <div class="metric-cell full-span">
-                <span class="m-key">CSS3 Engine:</span>
-                <span class="m-val mono-tag" id="telemetryEngine">matrix3d() Active</span>
-              </div>
+            <input type="range" id="minAreaSlider" min="1000" max="2500" step="100" value="1000" class="custom-slider" />
+            <div class="slider-bounds">
+              <span>1,200 sq ft</span>
+              <span>1,500 sq ft</span>
+              <span>2,400+ sq ft</span>
             </div>
           </div>
 
-          <!-- Quick Navigation Actions -->
-          <div class="dash-control-group">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-              <button type="button" class="dash-action-btn" id="recenterMasterplanBtn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
-                <span>Recenter</span>
-              </button>
-              <button type="button" class="dash-action-btn" id="toggleLabelsBtn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"></path></svg>
-                <span id="labelsBtnText">Plot Labels</span>
-              </button>
-            </div>
+          <!-- Reset Filter Button -->
+          <button type="button" class="reset-filter-btn" id="resetAllFiltersBtn">
+            <span>Reset All Filters</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Viewport Control HUD (Thumb-reach Floating Buttons on Lower Right) -->
+      <nav class="viewport-hud" id="viewportHud" aria-label="Camera and Map Controls">
+        <!-- 3D Perspective Isometric Tilt Toggle -->
+        <button type="button" class="hud-btn" id="hudTilt3dBtn" title="Toggle 2.5D / 3D Isometric View Angle">
+          <span class="hud-icon">3D</span>
+          <span class="hud-tooltip">3D Perspective</span>
+        </button>
+
+        <!-- Live GPS Mode ("My Location" On-Site Navigation) -->
+        <button type="button" class="hud-btn" id="hudGpsBtn" title="Live GPS: Track My Physical Location On-Site">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+          <span class="hud-tooltip">Live GPS Mode</span>
+        </button>
+
+        <!-- Linear Dimension Measurement Tool (Ruler) -->
+        <button type="button" class="hud-btn" id="hudMeasureBtn" title="Measure Distance & Road Frontage">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7l-6-6a1 1 0 0 0-1.4 0l-11 11a1 1 0 0 0 0 1.4l6 6a1 1 0 0 0 1.4 0l11-11a1 1 0 0 0 0-1.4z"></path><path d="M7.5 10.5l2 2"></path><path d="M10.5 7.5l2 2"></path><path d="M13.5 4.5l2 2"></path></svg>
+          <span class="hud-tooltip">Measure Tool</span>
+        </button>
+
+        <!-- Reset Orientation & Camera Home -->
+        <button type="button" class="hud-btn" id="hudCompassBtn" title="Reset Orientation to North & Home Center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="compassSvg"><circle cx="12" cy="12" r="10"></circle><polygon points="12 2 15 12 12 9 9 12 12 2" fill="currentColor"></polygon></svg>
+          <span class="hud-tooltip">Reset View</span>
+        </button>
+
+        <!-- Blueprint Layer Settings Modal / Toggle -->
+        <button type="button" class="hud-btn" id="hudBlueprintBtn" title="Adjust Blueprint CAD Opacity & Themes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          <span class="hud-tooltip">Blueprint Controls</span>
+        </button>
+      </nav>
+
+      <!-- Floating Blueprint Cross-fade Quick Controls (Bottom-Left) -->
+      <aside class="quick-blueprint-popover glass-panel" id="blueprintPopover" style="display: none;">
+        <div class="popover-header">
+          <span class="popover-title">Blueprint CAD Overlay</span>
+          <button class="popover-close-btn" id="closeBlueprintPopoverBtn">&times;</button>
+        </div>
+        <div class="popover-body">
+          <div class="slider-header-row">
+            <span class="control-label">Opacity:</span>
+            <span class="slider-percent" id="opacityDisplay">85%</span>
+          </div>
+          <input type="range" id="blueprintOpacitySlider" min="0" max="100" value="85" class="custom-slider" />
+          <div class="slider-bounds">
+            <button type="button" class="opacity-preset" data-val="0">0% Satellite</button>
+            <button type="button" class="opacity-preset" data-val="50">50%</button>
+            <button type="button" class="opacity-preset active" data-val="85">85%</button>
+            <button type="button" class="opacity-preset" data-val="100">100% CAD</button>
+          </div>
+          <div class="theme-switch-row">
+            <button type="button" class="theme-chip active" data-theme="white">White Glow</button>
+            <button type="button" class="theme-chip" data-theme="black">Original CAD</button>
+            <button type="button" class="theme-chip" data-theme="cyan">Cyan Tech</button>
           </div>
         </div>
       </aside>
 
-      <!-- Right Margin Property Information Sidebar Container -->
-      <aside class="property-sidebar glass-panel" id="propertySidebar" aria-label="Plot Details Sidebar">
-        <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="Close sidebar">&times;</button>
-        
-        <div class="sidebar-inner">
-          <!-- Golden Premium Banner Header (shown when is_corner is true) -->
-          <div class="corner-premium-banner" id="cornerPremiumBanner" style="display: none;">
-            <span class="star-icon">⭐</span>
-            <span class="banner-text">Premium Corner Plot</span>
+      <!-- Active Measurement HUD Banner (Shown when measurement tool is active) -->
+      <div class="measurement-hud glass-panel" id="measurementHud" style="display: none;">
+        <div class="meas-info">
+          <span class="meas-icon">📏</span>
+          <span class="meas-text" id="measInstruction">Click 2 points on the map to measure linear ground distance</span>
+        </div>
+        <button type="button" class="meas-exit-btn" id="exitMeasureBtn">Done</button>
+      </div>
+
+      <!-- 3. Plot Detail Sliding Drawer / Panel (Spacer UX Specification) -->
+      <aside class="spacer-detail-panel glass-panel" id="propertySidebar" aria-label="Selected Plot Information">
+        <!-- Drawer Mobile Pull Handle -->
+        <div class="mobile-drag-handle"></div>
+        <button class="panel-close-btn" id="sidebarCloseBtn" aria-label="Close plot details">&times;</button>
+
+        <div class="panel-scroll-wrapper">
+          <!-- Golden Premium Corner Banner Header -->
+          <div class="corner-gold-banner" id="cornerPremiumBanner" style="display: none;">
+            <span class="gold-star">⭐</span>
+            <span class="banner-title">Premium Corner Plot</span>
           </div>
 
-          <!-- Plot Heading & Status Pill Badge -->
-          <div class="sidebar-heading-section">
-            <div class="heading-row">
-              <span class="plot-prefix">RESIDENTIAL PARCEL</span>
-              <h2 class="plot-number-title" id="sidePlotNumber">Plot 104</h2>
+          <!-- Header Metric: Plot Number + Inventory Status Badge -->
+          <div class="panel-header-metric">
+            <div class="title-cluster">
+              <span class="sector-tag" id="sideSectorTag">SECTOR GRID</span>
+              <h2 class="plot-number-display" id="sidePlotNumber">Plot 104</h2>
             </div>
-            <div class="status-pill-row">
-              <span class="status-pill-badge" id="sideStatusBadge">Sold</span>
+            <div class="status-badge-wrapper">
+              <span class="status-pill status-available" id="sideStatusBadge">Available</span>
             </div>
           </div>
 
-          <!-- Distinct Rows for Dimensions, Area, and Total Price -->
-          <div class="specs-table-card">
-            <div class="spec-row">
-              <div class="spec-left">
-                <span class="spec-icon">📐</span>
-                <span class="spec-label">Dimensions</span>
+          <!-- Price Highlight Card -->
+          <div class="price-highlight-card">
+            <div class="price-top-row">
+              <span class="price-label">Allotment Price</span>
+              <span class="price-figure" id="sidePrice">$85,000</span>
+            </div>
+            <div class="price-meta-row">
+              <span class="rate-calc" id="sideRateCalc">Approx. $35.40 / sq ft</span>
+              <span class="title-verified-pill">✓ Clear Bank Title</span>
+            </div>
+          </div>
+
+          <!-- Dimensional Specs Table (with Sq Ft ⇄ Sq Yd Toggle) -->
+          <div class="dimensional-specs-table">
+            <div class="spec-table-header">
+              <span class="spec-table-title">Dimensional Specifications</span>
+              <div class="unit-toggle" id="unitToggle">
+                <button type="button" class="unit-btn active" data-unit="sqft">Sq Ft</button>
+                <button type="button" class="unit-btn" data-unit="sqyd">Sq Yd</button>
               </div>
-              <span class="spec-value" id="sideDimensions">40 x 60 ft</span>
             </div>
-            <div class="spec-row">
-              <div class="spec-left">
-                <span class="spec-icon">📏</span>
-                <span class="spec-label">Area</span>
+
+            <div class="spec-cell-row">
+              <div class="cell-label-group">
+                <span class="cell-icon">📏</span>
+                <span class="cell-label">Total Area:</span>
               </div>
-              <span class="spec-value highlight-area" id="sideArea">2400 sq ft</span>
+              <strong class="cell-val" id="sideArea">2400 sq ft</strong>
             </div>
-            <div class="spec-row">
-              <div class="spec-left">
-                <span class="spec-icon">💰</span>
-                <span class="spec-label">Total Price</span>
+
+            <div class="spec-cell-row">
+              <div class="cell-label-group">
+                <span class="cell-icon">📐</span>
+                <span class="cell-label">Boundary Dimensions:</span>
               </div>
-              <span class="spec-value highlight-price" id="sidePrice">$85,000</span>
+              <strong class="cell-val" id="sideDimensions">40 x 60 ft</strong>
+            </div>
+
+            <div class="spec-cell-row">
+              <div class="cell-label-group">
+                <span class="cell-icon">🛣️</span>
+                <span class="cell-label">Adjoining Road Width:</span>
+              </div>
+              <strong class="cell-val" id="sideRoadWidth">40 ft Asphalt Boulevard</strong>
+            </div>
+
+            <div class="spec-cell-row">
+              <div class="cell-label-group">
+                <span class="cell-icon">🧭</span>
+                <span class="cell-label">Directional Orientation:</span>
+              </div>
+              <strong class="cell-val" id="sideFacing">North-Facing</strong>
             </div>
           </div>
 
-          <!-- Compass Directional Facing Row -->
-          <div class="facing-row-card">
-            <div class="compass-badge">🧭</div>
-            <div class="facing-text-group">
-              <span class="facing-sub">Directional Facing:</span>
-              <strong class="facing-main" id="sideFacing">North-Facing</strong>
-            </div>
-          </div>
-
-          <!-- Masterplan Key Highlights -->
-          <div class="details-section">
-            <h3 class="section-heading">Masterplan Amenities &amp; Infrastructure</h3>
-            <ul class="amenities-list">
-              <li><span class="bullet-check">✓</span> 40-ft wide asphalt internal boulevard access</li>
-              <li><span class="bullet-check">✓</span> Dedicated underground utility &amp; storm drain corridors</li>
-              <li><span class="bullet-check">✓</span> 100% Vastu aligned orientation &amp; unencumbered title</li>
-              <li><span class="bullet-check">✓</span> Ready for immediate architectural sanction</li>
+          <!-- Infrastructure Highlights -->
+          <div class="amenities-container">
+            <h3 class="amenities-title">Infrastructure &amp; Compliance</h3>
+            <ul class="amenities-checklist">
+              <li><span class="check-mark">✓</span> 100% Vastu aligned orientation</li>
+              <li><span class="check-mark">✓</span> Underground electrical conduits &amp; fiber optical points</li>
+              <li><span class="check-mark">✓</span> Direct approach road frontage with dedicated storm drains</li>
+              <li><span class="check-mark">✓</span> Immediate registration &amp; bank sanction approved</li>
             </ul>
           </div>
 
-          <!-- Action Button at Base for Booking Submissions -->
-          <div class="sidebar-footer-action">
-            <button type="button" class="booking-submit-btn" id="bookingSubmitBtn">
-              <span id="bookingBtnText">Reserve &amp; Book Plot 104</span>
+          <!-- Sticky Call-To-Action (CTA) Container: Inquire on WhatsApp & Book Visit -->
+          <div class="sticky-cta-container">
+            <button type="button" class="cta-whatsapp-btn" id="ctaWhatsappBtn">
+              <span class="wa-icon">💬</span>
+              <span>Inquire on WhatsApp</span>
+            </button>
+            <button type="button" class="cta-booking-btn" id="ctaBookingBtn">
+              <span>Book Site Visit</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
             </button>
           </div>
@@ -244,64 +306,64 @@
 
       <!-- Map Legend (Bottom-Left) -->
       <div class="map-legend-bar glass-panel" id="mapLegend">
-        <span class="legend-caption">Availability:</span>
+        <span class="legend-caption">Inventory:</span>
         <div class="legend-chip"><span class="legend-swatch swatch-available"></span><span>Available</span></div>
         <div class="legend-chip"><span class="legend-swatch swatch-booked"></span><span>Booked</span></div>
         <div class="legend-chip"><span class="legend-swatch swatch-sold"></span><span>Sold</span></div>
       </div>
     </main>
 
-    <!-- Booking Submission Modal Dialog -->
-    <div class="modal-overlay" id="bookingModalOverlay" style="display: none;">
+    <!-- Site Visit & Booking Reservation Modal -->
+    <div class="modal-backdrop" id="bookingModalBackdrop" style="display: none;">
       <div class="booking-dialog glass-panel" id="bookingDialog">
-        <button class="dialog-close-btn" id="dialogCloseBtn">&times;</button>
+        <button class="modal-close-btn" id="modalCloseBtn">&times;</button>
         <div class="dialog-header">
-          <div class="dialog-badge">Direct Allotment Request</div>
-          <h3 class="dialog-title">Submit Booking for <span id="dialogPlotTitle" class="cyan-accent">Plot 104</span></h3>
-          <p class="dialog-subtitle">Lock in current allotment terms and schedule your priority site inspection.</p>
+          <div class="dialog-badge">Direct Developer Desk</div>
+          <h3 class="dialog-title">Schedule Site Visit for <span id="modalPlotTitle" class="cyan-text">Plot 104</span></h3>
+          <p class="dialog-desc">Select your preferred date for a private guided inspection of the estate.</p>
         </div>
 
         <form class="booking-form" id="bookingForm">
           <div class="form-row-2">
-            <div class="input-block">
-              <label for="clientName">Full Name *</label>
-              <input type="text" id="clientName" required placeholder="John Doe" />
+            <div class="field-group">
+              <label for="leadName">Your Name *</label>
+              <input type="text" id="leadName" required placeholder="John Doe" />
             </div>
-            <div class="input-block">
-              <label for="clientPhone">Contact Number *</label>
-              <input type="tel" id="clientPhone" required placeholder="+1 (555) 019-2834" />
+            <div class="field-group">
+              <label for="leadPhone">Phone / WhatsApp *</label>
+              <input type="tel" id="leadPhone" required placeholder="+1 (555) 019-2834" />
             </div>
           </div>
-          <div class="input-block">
-            <label for="clientEmail">Email Address</label>
-            <input type="email" id="clientEmail" placeholder="john.doe@example.com" />
+          <div class="field-group">
+            <label for="visitDate">Preferred Visit Date *</label>
+            <input type="date" id="visitDate" required />
           </div>
-          <div class="dialog-summary-panel">
-            <div class="summary-item"><span>Selected Unit:</span> <strong id="dialogPlotNo">Plot 104</strong></div>
-            <div class="summary-item"><span>Dimensions / Area:</span> <strong id="dialogPlotDim">40 x 60 ft (2400 sq ft)</strong></div>
-            <div class="summary-item"><span>Listed Price:</span> <strong id="dialogPlotPrice" class="cyan-accent">$85,000</strong></div>
+          <div class="summary-box">
+            <div class="sum-row"><span>Plot Selected:</span> <strong id="modalSummaryPlot">Plot 104</strong></div>
+            <div class="sum-row"><span>Dimensions:</span> <strong id="modalSummaryDims">40 x 60 ft (2400 sq ft)</strong></div>
+            <div class="sum-row"><span>Allotment Price:</span> <strong id="modalSummaryPrice" class="cyan-text">$85,000</strong></div>
           </div>
-          <button type="submit" class="submit-action-btn">
-            <span>Confirm Booking Reservation</span>
+          <button type="submit" class="submit-booking-btn">
+            <span>Confirm &amp; Request Callback</span>
           </button>
         </form>
       </div>
     </div>
 
     <!-- Notification Toast -->
-    <div class="toast-popup" id="toastPopup" style="display: none;">
-      <span class="toast-checkmark">✓</span>
-      <span class="toast-text" id="toastText">Plot reservation received successfully!</span>
+    <div class="toast-notification" id="toastNotification" style="display: none;">
+      <span class="toast-icon">✓</span>
+      <span class="toast-msg" id="toastMessage">Plot reservation received!</span>
     </div>
   </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-  <!-- Pre-computed GeoJSON Data for Instant Load -->
+  <!-- Pre-computed GeoJSON Dataset (Zero-CORS) -->
   <script src="plotsData.js"></script>
 
-  <!-- Main GIS Affine Engine -->
+  <!-- Spacer Interactive Plot Engine -->
   <script src="app.js"></script>
 </body>
 </html>

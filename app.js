@@ -1,9 +1,11 @@
 /**
- * KJP Layout • Advanced 6-Point Ground Control Point (GCP) Affine Projection Engine
- * Full-Stack GIS & Architectural CAD Overlay Solution with CSS3 3D Matrix Transformations
+ * KJP Layout • Spacer Interactive 3D Plot Viewing Platform Engine
+ * Advanced 6-Point GCP Affine Projection, 3D Perspective, Live GPS, Dynamic Inventory Filters & WhatsApp CTA
  */
 
+// ==============================================================================
 // 1. IMMUTABLE 6-POINT GROUND CONTROL TRANSFORMATION MATRIX (At absolute top)
+// ==============================================================================
 const GCP_MAPPING_MATRIX = Object.freeze([
   Object.freeze({
     label: "Top-Left Park Corner",
@@ -37,38 +39,50 @@ const GCP_MAPPING_MATRIX = Object.freeze([
   })
 ]);
 
-// Global State
+// Masterplan Geographic Bounding Box
+const MASTERPLAN_BOUNDS = L.latLngBounds(GCP_MAPPING_MATRIX.map(g => g.map));
+
+// Application State
 const appState = {
-  activeFilter: 'all',
+  // Filters
+  filterStatus: 'all',       // 'all' | 'Available' | 'Booked' | 'Sold'
+  filterFacing: 'all',       // 'all' | 'East-Facing' | 'North-Facing' | etc.
+  filterCategory: 'all',     // 'all' | 'corner' | 'standard'
+  filterMinArea: 0,          // minimum area threshold
+
+  // Selection & UI
   selectedPlotNo: null,
+  areaUnit: 'sqft',          // 'sqft' | 'sqyd'
+  is3dMode: false,
+  isGpsActive: false,
+  isMeasureMode: false,
+  measurePoints: [],
+  measureGraphicLayers: [],
+
+  // Overlay settings
   blueprintOpacity: 0.85,
   blueprintTheme: 'white',
-  showGcpPins: true,
+  showLabels: false,
+  forceLabels: false,
   plots: []
 };
 
-// Map & Layer references
+// Global Map References
 let map;
 let gcpBlueprintLayer;
 let plotsLayerGroup;
 let labelsLayerGroup;
-let gcpPinsLayerGroup;
+let gpsMarkerGroup;
+let measureLayerGroup;
 let plotLayersMap = new Map(); // plot_no -> Leaflet Layer
 
 /**
- * 2. ALGEBRAIC AFFINE COORDINATE MATRIX TRANSFORMATION SOLVER
- * Solves least-squares overdetermined linear system for N=6 Ground Control Points:
- * u = a*x + c*y + tx
- * v = b*x + d*y + ty
- * Calculates scaling (Scale X, Scale Y), rotation, skew, and translation metrics.
+ * 2. ALGEBRAIC AFFINE MATRIX TRANSFORMATION SOLVER (Least-Squares for N=6)
  */
 function computeAffineTransform(points) {
   const n = points.length;
-  if (n < 3) {
-    throw new Error('At least 3 Ground Control Points are required for affine transformation.');
-  }
+  if (n < 3) throw new Error('At least 3 GCPs required.');
 
-  // Normal equations: (M^T * M) * P = M^T * B
   let a00 = 0, a01 = 0, a02 = 0;
   let a11 = 0, a12 = 0, a22 = n;
   let bu0 = 0, bu1 = 0, bu2 = 0;
@@ -93,7 +107,6 @@ function computeAffineTransform(points) {
 
   const a10 = a01, a20 = a02, a21 = a12;
 
-  // Compute 3x3 determinant and adjugate matrix
   const c00 = a11 * a22 - a12 * a21;
   const c01 = -(a10 * a22 - a12 * a20);
   const c02 = a10 * a21 - a11 * a20;
@@ -107,39 +120,26 @@ function computeAffineTransform(points) {
   const c22 = a00 * a11 - a01 * a10;
 
   const det = a00 * c00 + a01 * c01 + a02 * c02;
-  if (Math.abs(det) < 1e-12) {
-    throw new Error('GCP Matrix collinear singularity detected.');
-  }
+  if (Math.abs(det) < 1e-12) throw new Error('Singular matrix');
 
   const invDet = 1.0 / det;
   const inv00 = c00 * invDet, inv01 = c10 * invDet, inv02 = c20 * invDet;
   const inv10 = c01 * invDet, inv11 = c11 * invDet, inv12 = c21 * invDet;
   const inv20 = c02 * invDet, inv21 = c12 * invDet, inv22 = c22 * invDet;
 
-  // Solution for u = a*x + c*y + tx
   const a = inv00 * bu0 + inv01 * bu1 + inv02 * bu2;
   const c = inv10 * bu0 + inv11 * bu1 + inv12 * bu2;
   const tx = inv20 * bu0 + inv21 * bu1 + inv22 * bu2;
 
-  // Solution for v = b*x + d*y + ty
   const b = inv00 * bv0 + inv01 * bv1 + inv02 * bv2;
   const d = inv10 * bv0 + inv11 * bv1 + inv12 * bv2;
   const ty = inv20 * bv0 + inv21 * bv1 + inv22 * bv2;
 
-  // Decompose into geometric affine metrics
-  const scaleX = Math.sqrt(a * a + b * b);
-  const scaleY = Math.sqrt(c * c + d * d);
-  const rotationRad = Math.atan2(b, a);
-  const rotationDeg = rotationRad * (180 / Math.PI);
-  const skewRad = Math.atan2(d, c) - Math.PI / 2 - rotationRad;
-  const skewDeg = skewRad * (180 / Math.PI);
-
-  return { a, b, c, d, tx, ty, scaleX, scaleY, rotationDeg, skewDeg };
+  return { a, b, c, d, tx, ty };
 }
 
 /**
  * 3. CUSTOM LEAFLET CSS3 3D AFFINE OVERLAY LAYER
- * Dynamically binds GCP coordinates to layer points and executes matrix3d(...)
  */
 const AffineGcpBlueprintLayer = L.Layer.extend({
   initialize: function(imageUrl, gcpMatrix, options) {
@@ -150,17 +150,10 @@ const AffineGcpBlueprintLayer = L.Layer.extend({
 
   onAdd: function(map) {
     this._map = map;
-    if (!this._image) {
-      this._initImage();
-    }
+    if (!this._image) this._initImage();
     map.getPanes().overlayPane.appendChild(this._image);
 
-    // Sync with Leaflet view updates
-    map.on('viewreset', this._update, this);
-    map.on('move', this._update, this);
-    map.on('zoom', this._update, this);
-    map.on('zoomend', this._update, this);
-
+    map.on('viewreset move zoom zoomend', this._update, this);
     this._update();
   },
 
@@ -168,10 +161,7 @@ const AffineGcpBlueprintLayer = L.Layer.extend({
     if (this._image && this._image.parentNode) {
       this._image.parentNode.removeChild(this._image);
     }
-    map.off('viewreset', this._update, this);
-    map.off('move', this._update, this);
-    map.off('zoom', this._update, this);
-    map.off('zoomend', this._update, this);
+    map.off('viewreset move zoom zoomend', this._update, this);
   },
 
   _initImage: function() {
@@ -181,15 +171,12 @@ const AffineGcpBlueprintLayer = L.Layer.extend({
     img.style.transformOrigin = '0 0';
     img.style.pointerEvents = 'none';
     img.style.opacity = this._options.opacity;
-    img.style.willChange = 'transform, opacity';
     this._image = img;
   },
 
   setOpacity: function(opacity) {
     this._options.opacity = opacity;
-    if (this._image) {
-      this._image.style.opacity = opacity;
-    }
+    if (this._image) this._image.style.opacity = opacity;
   },
 
   setTheme: function(theme) {
@@ -201,34 +188,21 @@ const AffineGcpBlueprintLayer = L.Layer.extend({
   _update: function() {
     if (!this._map || !this._image) return;
 
-    // Convert all 6 GCPs to current Leaflet layer pixels
     const pointPairs = this._gcpMatrix.map(pt => {
       const layerPoint = this._map.latLngToLayerPoint(L.latLng(pt.map[0], pt.map[1]));
-      return {
-        x: pt.image[0],
-        y: pt.image[1],
-        u: layerPoint.x,
-        v: layerPoint.y
-      };
+      return { x: pt.image[0], y: pt.image[1], u: layerPoint.x, v: layerPoint.y };
     });
 
-    const metrics = computeAffineTransform(pointPairs);
-    const { a, b, c, d, tx, ty, scaleX, scaleY, rotationDeg, skewDeg } = metrics;
-
-    // CSS3 3D Affine Matrix
+    const { a, b, c, d, tx, ty } = computeAffineTransform(pointPairs);
     const matrix3d = `matrix3d(${a.toFixed(8)}, ${b.toFixed(8)}, 0, 0, ${c.toFixed(8)}, ${d.toFixed(8)}, 0, 0, 0, 0, 1, 0, ${tx.toFixed(4)}, ${ty.toFixed(4)}, 0, 1)`;
     this._image.style.transform = matrix3d;
-
-    // Update Telemetry Panel in Dashboard
-    updateTelemetryUI(scaleX, scaleY, rotationDeg, skewDeg);
   }
 });
 
 /**
- * 4. INITIALIZE MAP & ESRI WORLD IMAGERY SATELLITE
+ * 4. INITIALIZE MAP ENGINE
  */
 function initMap() {
-  // Center of the 6 GCPs
   const centerLat = GCP_MAPPING_MATRIX.reduce((acc, p) => acc + p.map[0], 0) / GCP_MAPPING_MATRIX.length;
   const centerLng = GCP_MAPPING_MATRIX.reduce((acc, p) => acc + p.map[1], 0) / GCP_MAPPING_MATRIX.length;
 
@@ -241,30 +215,27 @@ function initMap() {
     attributionControl: true
   });
 
-  // Esri World Imagery Tile Layer
+  // Esri World Imagery Satellite Tile Layer
   L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     {
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      attribution: 'Tiles &copy; Esri &mdash; Spacer GIS Engine',
       maxNativeZoom: 19,
       maxZoom: 21
     }
   ).addTo(map);
 
-  // Esri Boundaries & Places Labels
+  // Esri Boundaries & Geographic Places Reference
   L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    {
-      maxNativeZoom: 19,
-      maxZoom: 21,
-      opacity: 0.75
-    }
+    { maxNativeZoom: 19, maxZoom: 21, opacity: 0.75 }
   ).addTo(map);
 
   // Layer Groups
   plotsLayerGroup = L.layerGroup().addTo(map);
-  labelsLayerGroup = L.layerGroup().addTo(map);
-  gcpPinsLayerGroup = L.layerGroup().addTo(map);
+  labelsLayerGroup = L.layerGroup();
+  gpsMarkerGroup = L.layerGroup().addTo(map);
+  measureLayerGroup = L.layerGroup().addTo(map);
 
   // Mount 6-Point GCP Blueprint Overlay
   gcpBlueprintLayer = new AffineGcpBlueprintLayer('KJP_Layout_Outline.png', GCP_MAPPING_MATRIX, {
@@ -272,54 +243,29 @@ function initMap() {
   });
   gcpBlueprintLayer.addTo(map);
 
-  // Render Visual Markers for the 6 GCPs
-  renderGcpVisualPins();
+  // Smart Zoom Listener for labels
+  map.on('zoomend', () => {
+    if (appState.forceLabels || (appState.showLabels && map.getZoom() >= 18)) {
+      if (!map.hasLayer(labelsLayerGroup)) map.addLayer(labelsLayerGroup);
+    } else if (!appState.forceLabels && map.getZoom() < 18) {
+      if (map.hasLayer(labelsLayerGroup)) map.removeLayer(labelsLayerGroup);
+    }
+  });
 
-  // Close sidebar on empty map click
+  // Click on map canvas
   map.on('click', function(e) {
-    if (e.originalEvent.target.classList.contains('leaflet-container') ||
-        e.originalEvent.target.id === 'map') {
+    if (appState.isMeasureMode) {
+      handleMeasureClick(e.latlng);
+      return;
+    }
+    if (e.originalEvent.target.classList.contains('leaflet-container') || e.originalEvent.target.id === 'map') {
       closeSidebar();
     }
   });
 }
 
 /**
- * Render Visual Pins for the 6 Ground Control Points
- */
-function renderGcpVisualPins() {
-  gcpPinsLayerGroup.clearLayers();
-
-  GCP_MAPPING_MATRIX.forEach((gcp, idx) => {
-    const latlng = L.latLng(gcp.map[0], gcp.map[1]);
-    const marker = L.marker(latlng, {
-      icon: L.divIcon({
-        className: 'gcp-target-pin',
-        html: `<div class="gcp-pin-inner"></div>`,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      })
-    });
-
-    marker.bindTooltip(`
-      <div style="font-weight: 700; color: #38bdf8;">GCP #${idx + 1}: ${gcp.label}</div>
-      <div style="font-size: 10px; font-family: monospace; color: #94a3b8; margin-top: 2px;">Image Pixel: [${gcp.image[0]}, ${gcp.image[1]}]</div>
-      <div style="font-size: 10px; font-family: monospace; color: #34d399;">Map LatLng: [${gcp.map[0].toFixed(6)}, ${gcp.map[1].toFixed(6)}]</div>
-    `, {
-      className: 'gcp-leaflet-tooltip',
-      direction: 'top',
-      offset: [0, -8]
-    });
-
-    gcpPinsLayerGroup.addLayer(marker);
-  });
-}
-
-/**
- * 5. DYNAMIC PLOT STYLING (Strict Status Specifications)
- * 'Available' -> Semi-transparent Emerald (#2ecc71, fillOpacity: 0.35, weight: 1.5, color: '#27ae60')
- * 'Booked'    -> Semi-transparent Amber (#f1c40f, fillOpacity: 0.35, weight: 1.5, color: '#d35400')
- * 'Sold'      -> Semi-transparent Ruby (#e74c3c, fillOpacity: 0.35, weight: 1.5, color: '#c0392b')
+ * 5. DYNAMIC PLOT STYLING (Available: Emerald, Booked: Amber, Sold: Ruby)
  */
 function getPlotBaseStyle(feature) {
   const status = feature.properties.status;
@@ -342,7 +288,6 @@ function getPlotBaseStyle(feature) {
       lineJoin: 'round'
     };
   } else {
-    // Sold
     return {
       fillColor: '#e74c3c',
       fillOpacity: 0.35,
@@ -364,17 +309,18 @@ function getPlotHoverStyle(feature) {
   };
 }
 
-function getPlotSelectedStyle(feature) {
+function getPlotSelectedStyle() {
   return {
     fillColor: '#38bdf8',
-    fillOpacity: 0.7,
+    fillOpacity: 0.72,
     weight: 4.0,
     color: '#ffffff'
   };
 }
 
 /**
- * 6. RENDER PLOTS GEOJSON WITH INTERACTION
+ * 6. RENDER PLOTS & INSTANT INVENTORY FILTER QUERY EXECUTION
+ * Spacer Pattern: Non-matching plots visually fade (drop opacity) while matching plots remain highlighted.
  */
 function renderPlots(geojsonData) {
   plotsLayerGroup.clearLayers();
@@ -386,22 +332,36 @@ function renderPlots(geojsonData) {
 
   const geoJsonLayer = L.geoJSON(geojsonData, {
     style: function(feature) {
+      const match = matchesFilters(feature);
+      if (!match) {
+        return {
+          fillColor: '#64748b',
+          fillOpacity: 0.04,
+          weight: 0.5,
+          color: 'rgba(255,255,255,0.06)'
+        };
+      }
       return getPlotBaseStyle(feature);
-    },
-    filter: function(feature) {
-      if (appState.activeFilter === 'all') return true;
-      return feature.properties.status === appState.activeFilter;
     },
     onEachFeature: function(feature, layer) {
       const props = feature.properties;
       plotLayersMap.set(props.plot_no, layer);
 
+      const isMatch = matchesFilters(feature);
+      if (!isMatch) {
+        // Dimmed plot
+        if (layer.getElement()) {
+          layer.getElement().classList.add('plot-dimmed');
+        }
+        return;
+      }
+
       // Tooltip
       const cornerTag = props.is_corner ? '⭐ Corner' : '';
       layer.bindTooltip(`
-        <div style="font-weight: 700; margin-bottom: 2px;">Plot ${props.plot_no} ${cornerTag}</div>
-        <div style="font-size: 11px; opacity: 0.9;">${props.status} • ${props.dimensions}</div>
-        <div style="font-size: 11px; color: #38bdf8; font-weight: 700; margin-top: 2px;">${props.price}</div>
+        <div style="font-weight: 800; font-size: 13px;">Plot ${props.plot_no} ${cornerTag}</div>
+        <div style="font-size: 11px; opacity: 0.9; margin-top: 1px;">${props.status} &bull; ${props.dimensions}</div>
+        <div style="font-size: 12px; color: #38bdf8; font-weight: 700; margin-top: 2px;">${props.price}</div>
       `, {
         sticky: true,
         direction: 'top',
@@ -416,26 +376,24 @@ function renderPlots(geojsonData) {
           icon: L.divIcon({
             className: 'plot-marker-label',
             html: `<span>#${props.plot_no}</span>`,
-            iconSize: [40, 20]
+            iconSize: [36, 16]
           }),
           interactive: false
         });
         labelsLayerGroup.addLayer(labelMarker);
       }
 
-      // Hover and Click listeners
+      // Hover and Click Listeners
       layer.on({
         mouseover: function(e) {
-          const l = e.target;
           if (appState.selectedPlotNo !== props.plot_no) {
-            l.setStyle(getPlotHoverStyle(feature));
-            l.bringToFront();
+            e.target.setStyle(getPlotHoverStyle(feature));
+            e.target.bringToFront();
           }
         },
         mouseout: function(e) {
-          const l = e.target;
           if (appState.selectedPlotNo !== props.plot_no) {
-            l.setStyle(getPlotBaseStyle(feature));
+            e.target.setStyle(getPlotBaseStyle(feature));
           }
         },
         click: function(e) {
@@ -450,7 +408,40 @@ function renderPlots(geojsonData) {
 }
 
 /**
- * 7. SELECT PLOT & POPULATE SIDEBAR PANEL
+ * Filter Matching Evaluation
+ */
+function matchesFilters(feature) {
+  const p = feature.properties;
+
+  // Status Filter
+  if (appState.filterStatus !== 'all' && p.status !== appState.filterStatus) {
+    return false;
+  }
+
+  // Facing Filter
+  if (appState.filterFacing !== 'all' && p.facing !== appState.filterFacing) {
+    return false;
+  }
+
+  // Category Filter
+  if (appState.filterCategory === 'corner' && !p.is_corner) {
+    return false;
+  }
+  if (appState.filterCategory === 'standard' && p.is_corner) {
+    return false;
+  }
+
+  // Minimum Area Threshold
+  if (appState.filterMinArea > 0) {
+    const areaVal = parseInt(p.area.replace(/\D/g, '')) || 0;
+    if (areaVal < appState.filterMinArea) return false;
+  }
+
+  return true;
+}
+
+/**
+ * 7. SPACER PLOT DETAIL PANEL SELECTION & DATA POPULATION
  */
 function selectPlot(plotNo) {
   const previousNo = appState.selectedPlotNo;
@@ -468,32 +459,39 @@ function selectPlot(plotNo) {
   const feature = layer.feature;
   const props = feature.properties;
 
-  // Apply selected style
-  layer.setStyle(getPlotSelectedStyle(feature));
+  // Highlight selected plot
+  layer.setStyle(getPlotSelectedStyle());
   layer.bringToFront();
 
-  // Smooth centering onto the plot's true bounding center
+  // Smooth Contextual Auto-Focus: Ease-in-out camera translation matrix
   if (layer.getBounds) {
     map.flyToBounds(layer.getBounds(), {
-      padding: [120, 120],
+      padding: [100, 100],
       maxZoom: 19,
       duration: 1.0
     });
   }
 
-  // Populate Sidebar Header & Data Rows
+  // Update Detail Panel Metrics
   document.getElementById('sidePlotNumber').textContent = `Plot ${props.plot_no}`;
-  document.getElementById('sideDimensions').textContent = props.dimensions;
-  document.getElementById('sideArea').textContent = props.area;
+  document.getElementById('sideSectorTag').textContent = props.grid_ref ? `SECTOR ${props.grid_ref}` : 'RESIDENTIAL PARCEL';
   document.getElementById('sidePrice').textContent = props.price;
+  document.getElementById('sideDimensions').textContent = props.dimensions;
   document.getElementById('sideFacing').textContent = props.facing;
+
+  // Road width dynamic estimation
+  const roadWidth = props.is_corner ? '40 ft Asphalt Boulevard' : '30 ft Internal Roadway';
+  document.getElementById('sideRoadWidth').textContent = roadWidth;
+
+  // Area & Units formatting
+  updateAreaDisplay(props.area);
 
   // Status Badge
   const statusBadge = document.getElementById('sideStatusBadge');
   statusBadge.textContent = props.status;
-  statusBadge.className = `status-pill-badge status-${props.status.toLowerCase()}`;
+  statusBadge.className = `status-pill status-${props.status.toLowerCase()}`;
 
-  // Golden Premium Banner: IF is_corner is true, instantly prepend
+  // Golden Corner Banner Header
   const cornerBanner = document.getElementById('cornerPremiumBanner');
   if (props.is_corner) {
     cornerBanner.style.display = 'flex';
@@ -501,17 +499,33 @@ function selectPlot(plotNo) {
     cornerBanner.style.display = 'none';
   }
 
-  // Booking button label
-  document.getElementById('bookingBtnText').textContent = `Reserve & Book Plot ${props.plot_no}`;
+  // Pre-fill booking modal
+  document.getElementById('modalPlotTitle').textContent = `Plot ${props.plot_no}`;
+  document.getElementById('modalSummaryPlot').textContent = `Plot ${props.plot_no}`;
+  document.getElementById('modalSummaryDims').textContent = `${props.dimensions} (${props.area})`;
+  document.getElementById('modalSummaryPrice').textContent = props.price;
 
-  // Pre-fill modal dialog
-  document.getElementById('dialogPlotTitle').textContent = `Plot ${props.plot_no}`;
-  document.getElementById('dialogPlotNo').textContent = `Plot ${props.plot_no}`;
-  document.getElementById('dialogPlotDim').textContent = `${props.dimensions} (${props.area})`;
-  document.getElementById('dialogPlotPrice').textContent = props.price;
-
-  // Open sidebar container
+  // Open Drawer / Sidebar Panel
   document.getElementById('propertySidebar').classList.add('open');
+}
+
+/**
+ * Format Area according to Sq Ft vs Sq Yd Toggle
+ */
+function updateAreaDisplay(rawAreaStr) {
+  const areaSqFt = parseInt(rawAreaStr.replace(/\D/g, '')) || 1200;
+  const areaElement = document.getElementById('sideArea');
+  const rateCalc = document.getElementById('sideRateCalc');
+
+  if (appState.areaUnit === 'sqyd') {
+    const sqYd = (areaSqFt / 9).toFixed(1);
+    areaElement.textContent = `${sqYd} sq yd (${areaSqFt} sq ft)`;
+    rateCalc.textContent = `Approx. $${(85000 / sqYd).toFixed(0)} / sq yd`;
+  } else {
+    areaElement.textContent = `${areaSqFt.toLocaleString()} sq ft`;
+    const ratePerSqFt = (85000 / areaSqFt).toFixed(2);
+    rateCalc.textContent = `Approx. $${ratePerSqFt} / sq ft`;
+  }
 }
 
 function closeSidebar() {
@@ -524,45 +538,339 @@ function closeSidebar() {
 }
 
 /**
- * 8. TELEMETRY & DASHBOARD UI BINDINGS
+ * 8. VIEWPORT CONTROL HUD (3D Tilt, Live GPS, Ruler Measurement, Reset View)
  */
-function updateTelemetryUI(scaleX, scaleY, rotationDeg, skewDeg) {
-  document.getElementById('telemetryScaleX').textContent = scaleX.toFixed(4);
-  document.getElementById('telemetryScaleY').textContent = scaleY.toFixed(4);
-  document.getElementById('telemetryRotation').textContent = `${rotationDeg.toFixed(2)}°`;
-  document.getElementById('telemetrySkew').textContent = `${skewDeg.toFixed(2)}°`;
-}
+function setupViewportHud() {
+  // 1. 3D Perspective Isometric Tilt
+  const tilt3dBtn = document.getElementById('hudTilt3dBtn');
+  const mapElement = document.getElementById('map');
 
-function updateKpiBadges() {
-  let available = 0, booked = 0, sold = 0;
-  appState.plots.forEach(f => {
-    const s = f.properties.status;
-    if (s === 'Available') available++;
-    else if (s === 'Booked') booked++;
-    else if (s === 'Sold') sold++;
+  tilt3dBtn.addEventListener('click', () => {
+    appState.is3dMode = !appState.is3dMode;
+    tilt3dBtn.classList.toggle('active', appState.is3dMode);
+    mapElement.classList.toggle('perspective-3d', appState.is3dMode);
+    showToast(appState.is3dMode ? '3D Perspective Isometric View Activated' : 'Top-Down Orthographic View Restored');
   });
 
-  document.getElementById('kpiTotal').textContent = appState.plots.length;
-  document.getElementById('kpiAvailable').textContent = available;
-  document.getElementById('kpiBooked').textContent = booked;
-  document.getElementById('kpiSold').textContent = sold;
+  // 2. Live GPS Mode ("My Location" On-Site Navigation)
+  const gpsBtn = document.getElementById('hudGpsBtn');
+  let gpsWatchId = null;
+
+  gpsBtn.addEventListener('click', () => {
+    appState.isGpsActive = !appState.isGpsActive;
+    gpsBtn.classList.toggle('active', appState.isGpsActive);
+
+    if (appState.isGpsActive) {
+      if ('geolocation' in navigator) {
+        showToast('Acquiring high-precision GPS lock...');
+        gpsWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const userLatLng = [pos.coords.latitude, pos.coords.longitude];
+            renderGpsMarker(userLatLng, pos.coords.accuracy);
+            map.flyTo(userLatLng, 18, { duration: 1.2 });
+            showToast('GPS Lock Active: Location synchronized on masterplan');
+          },
+          () => {
+            // Simulated fallback to on-site center if location permission blocked or on desktop
+            const simulatedOnSite = [15.328669, 75.173189];
+            renderGpsMarker(simulatedOnSite, 10);
+            map.flyTo(simulatedOnSite, 18, { duration: 1.2 });
+            showToast('GPS Simulation Mode: Centered on layout ground location');
+          },
+          { enableHighAccuracy: true, timeout: 5000 }
+        );
+      }
+    } else {
+      if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId);
+      gpsMarkerGroup.clearLayers();
+      showToast('Live GPS Mode Disabled');
+    }
+  });
+
+  function renderGpsMarker(latlng, accuracy) {
+    gpsMarkerGroup.clearLayers();
+    const pulseMarker = L.marker(latlng, {
+      icon: L.divIcon({
+        className: 'gps-user-marker',
+        html: `<div class="gps-pulse-circle"></div><div class="gps-dot"></div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      })
+    });
+    const circle = L.circle(latlng, { radius: Math.min(accuracy || 15, 30), color: '#3b82f6', fillOpacity: 0.1, weight: 1 });
+    gpsMarkerGroup.addLayer(circle);
+    gpsMarkerGroup.addLayer(pulseMarker);
+  }
+
+  // 3. Linear Dimension Measurement Tool (Ruler)
+  const measureBtn = document.getElementById('hudMeasureBtn');
+  const measureHud = document.getElementById('measurementHud');
+  const exitMeasureBtn = document.getElementById('exitMeasureBtn');
+
+  measureBtn.addEventListener('click', () => {
+    appState.isMeasureMode = !appState.isMeasureMode;
+    measureBtn.classList.toggle('active', appState.isMeasureMode);
+    if (appState.isMeasureMode) {
+      measureHud.style.display = 'flex';
+      appState.measurePoints = [];
+      measureLayerGroup.clearLayers();
+      document.getElementById('measInstruction').textContent = 'Click 2 points on the map to measure linear ground distance';
+    } else {
+      clearMeasureTool();
+    }
+  });
+
+  exitMeasureBtn.addEventListener('click', clearMeasureTool);
+
+  function clearMeasureTool() {
+    appState.isMeasureMode = false;
+    measureBtn.classList.remove('active');
+    measureHud.style.display = 'none';
+    measureLayerGroup.clearLayers();
+    appState.measurePoints = [];
+  }
+
+  // 4. Reset Orientation & Camera Home
+  const compassBtn = document.getElementById('hudCompassBtn');
+  compassBtn.addEventListener('click', () => {
+    map.flyToBounds(MASTERPLAN_BOUNDS, { padding: [50, 50], duration: 1.2 });
+    showToast('Camera reset to masterplan center');
+  });
+
+  // 5. Blueprint Layer Popover Toggle
+  const blueprintBtn = document.getElementById('hudBlueprintBtn');
+  const blueprintPopover = document.getElementById('blueprintPopover');
+  const closeBlueprintPopoverBtn = document.getElementById('closeBlueprintPopoverBtn');
+
+  blueprintBtn.addEventListener('click', () => {
+    const isVisible = blueprintPopover.style.display === 'block';
+    blueprintPopover.style.display = isVisible ? 'none' : 'block';
+    blueprintBtn.classList.toggle('active', !isVisible);
+  });
+
+  closeBlueprintPopoverBtn.addEventListener('click', () => {
+    blueprintPopover.style.display = 'none';
+    blueprintBtn.classList.remove('active');
+  });
 }
 
-function setupUIListeners() {
-  // Opacity Slider
+/**
+ * Handle Linear Distance Measurement on Map Click
+ */
+function handleMeasureClick(latlng) {
+  appState.measurePoints.push(latlng);
+
+  // Add pin marker
+  const marker = L.circleMarker(latlng, {
+    radius: 5,
+    fillColor: '#06b6d4',
+    fillOpacity: 1,
+    color: '#ffffff',
+    weight: 2
+  });
+  measureLayerGroup.addLayer(marker);
+
+  if (appState.measurePoints.length === 2) {
+    const p1 = appState.measurePoints[0];
+    const p2 = appState.measurePoints[1];
+    const distMeters = p1.distanceTo(p2);
+    const distFeet = (distMeters * 3.28084).toFixed(1);
+
+    const polyline = L.polyline([p1, p2], {
+      color: '#06b6d4',
+      weight: 3,
+      dashArray: '6, 6'
+    });
+    measureLayerGroup.addLayer(polyline);
+
+    // Center distance badge
+    const midLat = (p1.lat + p2.lat) / 2;
+    const midLng = (p1.lng + p2.lng) / 2;
+    const distMarker = L.marker([midLat, midLng], {
+      icon: L.divIcon({
+        className: 'dist-readout-badge',
+        html: `<div style="background: rgba(14,20,34,0.95); border: 1px solid #06b6d4; padding: 4px 8px; border-radius: 6px; font-weight: 700; color: #67e8f9; font-size: 11px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.6);">${distFeet} ft (${distMeters.toFixed(1)} m)</div>`,
+        iconSize: [120, 24]
+      })
+    });
+    measureLayerGroup.addLayer(distMarker);
+
+    document.getElementById('measInstruction').textContent = `Distance: ${distFeet} ft (${distMeters.toFixed(1)} m). Click again to measure a new line.`;
+    appState.measurePoints = [];
+  }
+}
+
+/**
+ * 9. INVENTORY FILTER MECHANICS & DRAWER
+ */
+function setupInventoryFilters() {
+  // Top Navbar Status Chips
+  document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      appState.filterStatus = chip.dataset.status;
+      applyFilters();
+    });
+  });
+
+  // Toggle Advanced Filter Drawer
+  const toggleDrawerBtn = document.getElementById('toggleFilterDrawerBtn');
+  const drawer = document.getElementById('advancedFilterDrawer');
+  const closeDrawerBtn = document.getElementById('closeFilterDrawerBtn');
+
+  toggleDrawerBtn.addEventListener('click', () => {
+    const isVisible = drawer.style.display === 'block';
+    drawer.style.display = isVisible ? 'none' : 'block';
+  });
+
+  closeDrawerBtn.addEventListener('click', () => {
+    drawer.style.display = 'none';
+  });
+
+  // Facing Chips
+  document.querySelectorAll('.facing-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.facing-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      appState.filterFacing = chip.dataset.facing;
+      applyFilters();
+    });
+  });
+
+  // Category Toggle (All, Corner, Standard)
+  document.querySelectorAll('.cat-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      appState.filterCategory = pill.dataset.category;
+      applyFilters();
+    });
+  });
+
+  // Minimum Area Range Slider
+  const areaSlider = document.getElementById('minAreaSlider');
+  const areaDisplay = document.getElementById('minAreaDisplay');
+  areaSlider.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    appState.filterMinArea = val > 1000 ? val : 0;
+    areaDisplay.textContent = val > 1000 ? `≥ ${val} sq ft` : 'All Sizes';
+    applyFilters();
+  });
+
+  // Reset Filters
+  document.getElementById('resetAllFiltersBtn').addEventListener('click', () => {
+    appState.filterStatus = 'all';
+    appState.filterFacing = 'all';
+    appState.filterCategory = 'all';
+    appState.filterMinArea = 0;
+
+    // Reset UI
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.toggle('active', c.dataset.status === 'all'));
+    document.querySelectorAll('.facing-chip').forEach(c => c.classList.toggle('active', c.dataset.facing === 'all'));
+    document.querySelectorAll('.cat-pill').forEach(c => c.classList.toggle('active', c.dataset.category === 'all'));
+    areaSlider.value = 1000;
+    areaDisplay.textContent = 'All Sizes';
+
+    applyFilters();
+    showToast('Filters reset to default view');
+  });
+
+  function applyFilters() {
+    if (window.PLOTS_GEOJSON) {
+      renderPlots(window.PLOTS_GEOJSON);
+    }
+  }
+}
+
+/**
+ * 10. PLOT DETAIL ACTIONS: WHATSAPP CTA, SITE VISIT MODAL, SQ FT / SQ YD TOGGLE
+ */
+function setupDetailPanelActions() {
+  // Close Sidebar Button
+  document.getElementById('sidebarCloseBtn').addEventListener('click', closeSidebar);
+
+  // Unit Toggle (Sq Ft ⇄ Sq Yd)
+  document.querySelectorAll('.unit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      appState.areaUnit = btn.dataset.unit;
+      const currentProps = plotLayersMap.get(appState.selectedPlotNo)?.feature?.properties;
+      if (currentProps) {
+        updateAreaDisplay(currentProps.area);
+      }
+    });
+  });
+
+  // Sticky CTA: Inquire on WhatsApp
+  document.getElementById('ctaWhatsappBtn').addEventListener('click', () => {
+    const plotNo = appState.selectedPlotNo || '104';
+    const msg = encodeURIComponent(`Hi! I am interested in inquiring about ${plotNo} at KJP Layout. Please share availability and payment schedule.`);
+    const waUrl = `https://wa.me/?text=${msg}`;
+    window.open(waUrl, '_blank');
+  });
+
+  // Sticky CTA: Book Site Visit Modal
+  const modalBackdrop = document.getElementById('bookingModalBackdrop');
+  const bookingBtn = document.getElementById('ctaBookingBtn');
+  const modalCloseBtn = document.getElementById('modalCloseBtn');
+  const bookingForm = document.getElementById('bookingForm');
+
+  bookingBtn.addEventListener('click', () => {
+    modalBackdrop.style.display = 'flex';
+  });
+
+  function closeModal() {
+    modalBackdrop.style.display = 'none';
+  }
+
+  modalCloseBtn.addEventListener('click', closeModal);
+  modalBackdrop.addEventListener('click', (e) => {
+    if (e.target === modalBackdrop) closeModal();
+  });
+
+  bookingForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = document.getElementById('leadName').value;
+    const date = document.getElementById('visitDate').value;
+    closeModal();
+    showToast(`Thank you, ${name}! Your site inspection for ${date} has been registered.`);
+    bookingForm.reset();
+  });
+
+  // Download Brochure Action
+  document.getElementById('downloadBrochureBtn').addEventListener('click', () => {
+    window.print();
+  });
+
+  // Keyboard shortcut: ESC closes all modals & drawers
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      closeSidebar();
+      document.getElementById('advancedFilterDrawer').style.display = 'none';
+      document.getElementById('blueprintPopover').style.display = 'none';
+    }
+  });
+}
+
+/**
+ * 11. BLUEPRINT OVERLAY CONTROLS (Opacity & Themes)
+ */
+function setupBlueprintControls() {
   const slider = document.getElementById('blueprintOpacitySlider');
   slider.addEventListener('input', (e) => {
     const val = parseFloat(e.target.value) / 100;
     appState.blueprintOpacity = val;
     gcpBlueprintLayer.setOpacity(val);
     document.getElementById('opacityDisplay').textContent = `${Math.round(val * 100)}%`;
-    document.querySelectorAll('.preset-pill').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.opacity-preset').forEach(b => b.classList.remove('active'));
   });
 
-  // Opacity Presets
-  document.querySelectorAll('.preset-pill').forEach(btn => {
+  document.querySelectorAll('.opacity-preset').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.preset-pill').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.opacity-preset').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const val = parseFloat(btn.dataset.val) / 100;
       slider.value = btn.dataset.val;
@@ -572,100 +880,21 @@ function setupUIListeners() {
     });
   });
 
-  // Blueprint Themes
-  document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      gcpBlueprintLayer.setTheme(btn.dataset.theme);
+  document.querySelectorAll('.theme-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.theme-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      gcpBlueprintLayer.setTheme(chip.dataset.theme);
     });
   });
-
-  // Toggle GCP Ground Pins on Map
-  const toggleGcpPinsBtn = document.getElementById('toggleGcpPinsBtn');
-  const gcpPinsText = document.getElementById('gcpPinsText');
-  toggleGcpPinsBtn.addEventListener('click', () => {
-    appState.showGcpPins = !appState.showGcpPins;
-    if (appState.showGcpPins) {
-      map.addLayer(gcpPinsLayerGroup);
-      gcpPinsText.textContent = 'Hide 6 GCPs';
-    } else {
-      map.removeLayer(gcpPinsLayerGroup);
-      gcpPinsText.textContent = 'Show 6 GCPs';
-    }
-  });
-
-  // Collapse / Expand Dashboard
-  document.getElementById('toggleDashBtn').addEventListener('click', () => {
-    document.getElementById('devDashboard').classList.toggle('collapsed');
-  });
-
-  // Recenter Masterplan Bounds
-  document.getElementById('recenterMasterplanBtn').addEventListener('click', () => {
-    const bounds = L.latLngBounds(GCP_MAPPING_MATRIX.map(g => g.map));
-    map.flyToBounds(bounds, { padding: [60, 60], duration: 1.2 });
-  });
-
-  // KPI Filter Pills
-  document.querySelectorAll('.kpi-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      document.querySelectorAll('.kpi-pill').forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      appState.activeFilter = pill.dataset.filter;
-      if (window.PLOTS_GEOJSON) {
-        renderPlots(window.PLOTS_GEOJSON);
-      }
-    });
-  });
-
-  // Close Sidebar
-  document.getElementById('sidebarCloseBtn').addEventListener('click', closeSidebar);
-
-  // Booking Modal
-  const modalOverlay = document.getElementById('bookingModalOverlay');
-  const bookingBtn = document.getElementById('bookingSubmitBtn');
-  const dialogCloseBtn = document.getElementById('dialogCloseBtn');
-  const bookingForm = document.getElementById('bookingForm');
-
-  bookingBtn.addEventListener('click', () => {
-    modalOverlay.style.display = 'flex';
-  });
-
-  function closeModal() {
-    modalOverlay.style.display = 'none';
-  }
-
-  dialogCloseBtn.addEventListener('click', closeModal);
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) closeModal();
-  });
-
-  bookingForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const name = document.getElementById('clientName').value;
-    closeModal();
-    showToast(`Reservation request for Plot ${appState.selectedPlotNo} submitted! We will contact ${name} shortly.`);
-    bookingForm.reset();
-  });
-
-  // Keyboard ESC
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      closeModal();
-      closeSidebar();
-    }
-  });
-
-  // Search autocomplete
-  setupSearch();
 }
 
 /**
- * 9. SEARCH AUTOCOMPLETE LOGIC
+ * 12. SEARCH AUTOCOMPLETE ENGINE
  */
 function setupSearch() {
-  const input = document.getElementById('searchInput');
-  const clearBtn = document.getElementById('searchClearBtn');
+  const input = document.getElementById('plotSearchInput');
+  const clearBtn = document.getElementById('clearSearchBtn');
   const dropdown = document.getElementById('searchDropdown');
 
   function doSearch(term) {
@@ -680,7 +909,7 @@ function setupSearch() {
     const matches = appState.plots.filter(f => {
       const pno = f.properties.plot_no.toLowerCase();
       return pno.includes(term) || `plot ${pno}`.includes(term);
-    });
+    }).slice(0, 15);
 
     if (matches.length === 0) {
       dropdown.innerHTML = `<div style="padding: 10px; color: #94a3b8; text-align: center; font-size: 12px;">No matching plots found</div>`;
@@ -689,7 +918,7 @@ function setupSearch() {
     }
 
     dropdown.innerHTML = matches.map(m => `
-      <div class="search-item" data-pno="${m.properties.plot_no}">
+      <div class="search-result-row" data-pno="${m.properties.plot_no}">
         <div>
           <strong>Plot ${m.properties.plot_no}</strong>
           ${m.properties.is_corner ? '<span style="color: #f59e0b; margin-left: 4px;">⭐</span>' : ''}
@@ -703,9 +932,9 @@ function setupSearch() {
 
     dropdown.style.display = 'block';
 
-    dropdown.querySelectorAll('.search-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const targetNo = item.dataset.pno;
+    dropdown.querySelectorAll('.search-result-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const targetNo = row.dataset.pno;
         input.value = `Plot ${targetNo}`;
         dropdown.style.display = 'none';
         selectPlot(targetNo);
@@ -728,24 +957,41 @@ function setupSearch() {
   });
 }
 
+function updateKpiBadges() {
+  let available = 0, booked = 0, sold = 0;
+  appState.plots.forEach(f => {
+    const s = f.properties.status;
+    if (s === 'Available') available++;
+    else if (s === 'Booked') booked++;
+    else if (s === 'Sold') sold++;
+  });
+
+  document.getElementById('kpiTotal').textContent = appState.plots.length;
+  document.getElementById('kpiAvailable').textContent = available;
+  document.getElementById('kpiBooked').textContent = booked;
+  document.getElementById('kpiSold').textContent = sold;
+}
+
 function showToast(msg) {
-  const toast = document.getElementById('toastPopup');
-  const toastText = document.getElementById('toastText');
-  toastText.textContent = msg;
+  const toast = document.getElementById('toastNotification');
+  const toastMsg = document.getElementById('toastMessage');
+  toastMsg.textContent = msg;
   toast.style.display = 'flex';
-  setTimeout(() => {
-    toast.style.display = 'none';
-  }, 4500);
+  setTimeout(() => { toast.style.display = 'none'; }, 4000);
 }
 
 /**
- * 10. BOOTSTRAP APPLICATION
+ * 13. BOOTSTRAP SPACER PLATFORM
  */
 window.addEventListener('DOMContentLoaded', () => {
   initMap();
-  setupUIListeners();
+  setupViewportHud();
+  setupInventoryFilters();
+  setupDetailPanelActions();
+  setupBlueprintControls();
+  setupSearch();
 
-  // Load 10 Plots GeoJSON
+  // Load 341 Plots GeoJSON
   if (window.PLOTS_GEOJSON) {
     renderPlots(window.PLOTS_GEOJSON);
   } else {
@@ -755,10 +1001,10 @@ window.addEventListener('DOMContentLoaded', () => {
       .catch(err => console.error('Error loading plots.geojson:', err));
   }
 
-  // Pre-select required showcase Plot 104 to demonstrate rich sidebar & corner banner
+  // Pre-select Plot 104 to showcase the rich detail panel
   setTimeout(() => {
     if (plotLayersMap.has('104')) {
       selectPlot('104');
     }
-  }, 500);
+  }, 600);
 });
