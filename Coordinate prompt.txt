@@ -1,0 +1,52 @@
+Act as an expert GIS Architect and Frontend Developer. The standard 2-corner bounding box is causing structural alignment distortion over the satellite terrain. We need to implement a robust 6-Point Ground Control Point (GCP) affine projection matrix solution using CSS3 3D canvas rendering transformations or a thin-plate spline solver to ensure this architectural layout matches the physical topography perfectly.
+
+Please configure the project workspace and write the code according to the following strict guidelines:
+
+1. WORKSPACE CORE SCAFFOLDING:
+   - Generate index.html, styles.css, and app.js.
+   - Inject Leaflet.js via CDN alongside standard Esri World Imagery satellite map layers.
+
+2. ADVANCED 6-POINT GROUND CONTROL TRANSFORMATION MATRIX:
+   - At the absolute top of app.js, define an immutable dataset configuration named `GCP_MAPPING_MATRIX`.
+   - Setup a 6-point matrix structure pairing raw image file pixels [X, Y] to true Earth geographical coordinates [Lat, Lng]. Use these descriptive positions as our code template structure:
+     const gcpMatrix = [
+       { label: "Top-Left Park Corner", image: [14,90], map: [15.330146085670561, 75.1702983832602] },
+       { label: "Top-Right Row Edge", image: [699,105], map: [15.330301291921328, 75.17292694799194] },
+       { label: "Mid-Right Park Boundary", image: [988,834], map: [15.327517908991947, 75.17483668073581] },
+       { label: "Bottom Road Tip Nose", image: [268,1435], map: [15.325220814114056, 75.17154292819819] },
+       { label: "Inner Drop Corner Near Yoga Center", image: [515,843], map: [15.327445478446883, 75.17331318607874] },
+       { label: "Central Main Road Intersection", image: [636,509], map: [15.32866938226605, 75.17318997748359] }
+     ];
+   - Implement an algebraic affine coordinate matrix transformation function that reads these 6 reference points, calculates the scaling, rotation, skew, and translation metrics, and overlays the blueprint asset using a responsive transform engine (`transform: matrix3d(...)`) mapped over a custom Leaflet overlay layer.
+   - Include a UI opacity slider dashboard on the top-left map view so developers can cross-fade the layout layer cleanly to check ground matching precision.
+
+3. INTERACTIVE PLOTS WITH EXPANDED DATA ATTRIBUTES (GeoJSON):
+   - Scaffold a functional sample array of 10 plot polygon coordinate coordinates mapped onto the active layout layer.
+   - Every single plot object feature must carry these exact property keys within its metadata structure:
+     * 'plot_no' (e.g., "104")
+     * 'dimensions' (e.g., "40 x 60 ft")
+     * 'area' (e.g., "2400 sq ft")
+     * 'price' (e.g., "\$85,000")
+     * 'status' ('Available', 'Booked', 'Sold')
+     * 'facing' (e.g., "East-Facing", "North-Facing", "West-Facing")
+     * 'is_corner' (Boolean: true/false)
+   - Assign responsive SVG rendering styles color-coded directly to their availability 'status':
+     * 'Available' -> Semi-transparent Emerald (#2ecc71, fillOpacity: 0.35, weight: 1.5, color: '#27ae60')
+     * 'Booked' -> Semi-transparent Amber (#f1c40f, fillOpacity: 0.35, weight: 1.5, color: '#d35400')
+     * 'Sold' -> Semi-transparent Ruby (#e74c3c, fillOpacity: 0.35, weight: 1.5, color: '#c0392b')
+
+4. PREMIUM SIDEBAR DETAIL PANEL INTERACTION:
+   - Build a sleek, responsive property information sidebar container fixed to the right margin of the application UI viewport.
+   - When a plot feature polygon receives a user mouse hover event, amplify its border weights dynamically to indicate selectable state.
+   - When clicked, center the viewport smoothly onto the plot's true bounding center and parse all custom dataset parameters directly into the sidebar panel layout using clean web typography:
+     * Display the Plot Number prominently at the head of the file.
+     * Render an elegant colored pill badge reflecting the current booking Status.
+     * Show distinct rows for Dimensions, Area, and Total Price.
+     * Add a clean compass icon row: "🧭 Directional Facing: [facing property details]".
+     * IF the 'is_corner' attribute evaluates to `true`, instantly prepend a golden premium banner header over the data list reading: "⭐ Premium Corner Plot".
+     * Provide an action button at the base configured for booking submissions.
+
+5. BROWSER AGENT CALIBRATION AND VALIDATION EXECUTION:
+   - Launch your local live testing environment server via your built-in browser engine console framework.
+   - Execute verification tests across the map view canvas. Inspect for boundary drifts when changing map zoom levels.
+   - If pixel calculations drift from the physical satellite imagery alignment, let your AI agent automatically calculate minor sub-pixel coordinate micro-adjustments (+/- 0.00002 decimal point corrections) inside the map arrays until the layout overlay matches perfectly.

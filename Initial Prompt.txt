@@ -1,0 +1,89 @@
+Act as an expert Full-Stack GIS and Frontend Engineer. I need you to build a complete, production-ready interactive real estate layout map clone of "https://spacer.land/2QMAh?status=il4klN". The tool must display a real-time satellite map with an engineered layout blueprint precisely overlaid on top, featuring clickable, color-coded interactive plots.
+
+Please execute this project through the following steps, using your built-in Browser Agent to visually test and verify each iteration until it is bug-free:
+
+1. WORKSPACE SETUP & SCAFFOLDING:
+   - Create a clean project structure with an index.html, styles.css, and app.js.
+   - Use Leaflet.js (via CDN) for the mapping framework due to its lightweight performance and easy support for custom image overlays and GeoJSON polygons. 
+   - Integrate the Esri World Imagery tile layer to provide the real-time satellite imagery background.
+
+2. BLUEPRINT OVERLAY LOGIC (GEOREFERENCING):
+   - Locate the layout blueprint file provided in the workspace: KJP_Layout_Outline.png. 
+   - Convert the blueprint file into a web-optimized asset (like a high-res PNG) if necessary.
+   - Implement a Leaflet `L.imageOverlay` to superimpose this layout image directly onto the satellite map.
+   - Set the geographic bounding box array strictly using these coordinates:
+      Bounding Box: [[15.330144270045299, 75.17031642578027], [15.325156914381514, 75.17219397212556]]
+   - Add a UI opacity slider control (0% to 100%) so users can visually cross-fade between the blueprint and the true satellite ground view.
+
+3. INTERACTIVE CLICKABLE PLOTS WITH EXTENDED METADATA:
+   - Scaffold a sample GeoJSON dataset containing at least 5 mock plots layered directly over the blueprint's plot lines. 
+   - Assign the following extended property attributes to each plot polygon: 
+     * 'plot_id' (e.g., "Plot 42")
+     * 'dimensions' (e.g., "30x40 sq ft")
+     * 'price' (e.g., "\45,000")
+     * 'status' ('Available', 'Booked', 'Sold')
+     * 'facing' (e.g., "East-Facing", "North-Facing")
+     * 'is_corner' (Boolean: true/false)
+   - Write a dynamic styling function that colors the plots based on their 'status':
+     * 'Available' -> Semi-transparent Green (#2ecc71, opacity 0.4) with a crisp green border.
+     * 'Booked' -> Semi-transparent Yellow (#f1c40f, opacity 0.4) with a crisp yellow border.
+     * 'Sold' -> Semi-transparent Red (#e74c3c, opacity 0.4) with a crisp red border.
+
+4. USER INTERACTIVE FLOW & PROPERTY SIDEBAR:
+   - Implement `onEachFeature` listeners for the plot polygons.
+   - When a user hovers over a plot, highlight its borders. 
+   - When a user clicks a plot, fly the map smoothly to center on that plot and open a beautiful modern sidebar panel on the right side of the screen.
+   - The detail panel must elegantly display:
+     * Plot Number (Heading)
+     * Status Badge (Color-coded based on status)
+     * Dimensions & Price
+     * Facing Direction (e.g., 🧭 Facing: East)
+     * Corner Plot Indicator (If 'is_corner' is true, show a prominent premium badge: "⭐ Premium Corner Plot")
+     * A placeholder button saying "Enquire About This Plot".
+
+5. BROWSER AGENT TESTING & VERIFICATION:
+   - Spin up a local server and use your browser capabilities to open the map.
+   - Visually test that the satellite tiles load seamlessly and that the layout image is rendered at the correct coordinates.
+   - Execute test clicks on the plots to ensure the state engine updates, borders highlight on hover, and the info panel opens with all parameters (including Corner and Facing data) showing correctly.
+   - Fix any console errors or overlapping layout CSS issues automatically. Deliver the complete, clean source code files ready to be deployed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

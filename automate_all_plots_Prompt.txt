@@ -1,0 +1,32 @@
+Act as a Senior GIS Developer and Computer Vision Engineer. I have uploaded the complete real estate layout image to the workspace. Instead of writing just 10 mock plots, I need you to automatically detect, trace, and index EVERY individual plot polygon visible within the white boundaries of this layout.
+
+Please execute this pipeline using your Python runtime and Browser Agent, and save the output directly into our interactive map data:
+
+1. AUTOMATED PLOT EXTRACTION VIA COMPUTER VISION:
+   - Write a Python script using OpenCV (`cv2`) and NumPy to process the layout image file.
+   - Apply a grayscale filter, bilateral filtering to reduce noise, and adaptive thresholding or Canny Edge Detection to cleanly isolate the white grid lines of the plots.
+   - Use `cv2.findContours` with a retrieval mode of `cv2.RETR_TREE` or `cv2.RETR_LIST` to locate all closed geometric shapes (rectangles/polygons) that fall within a logical area size matching a single plot.
+   - Filter out contours that are too small (text labels) or too large (the main perimeter boundary or major roads).
+
+2. GRID INDEXING & LABEL CORRELATION:
+   - For every validated plot contour found, extract its 4-corner pixel coordinates: `[[X1, Y1], [X2, Y2], [X3, Y3], [X4, Y4]]`.
+   - Implement an OCR step (using Tesseract or a lightweight OCR engine) or a spatial text-mapping function to read the plot numbers (like #101, #102, #106) from the image and associate them with the nearest corresponding plot polygon.
+   - If an explicit text label isn't detected for a plot, auto-increment its ID sequentially based on its row/column spatial grid location (e.g., "Plot_Row1_Col5") so no plot is left out.
+
+3. CONVERT PIXELS TO GEOGRAPHIC GEOJSON:
+   - Using our established 6-Point Ground Control Point (GCP) affine transformation matrix math, loop through every single extracted pixel coordinate array.
+   - Project those raw image pixels [X,Y] into true geographic Latitude and Longitude pairs [Lat, Lng].
+   - Save the finalized collection of hundreds of plots into a valid, beautifully formatted `plots.geojson` file in the project directory.
+
+4. AUTOMATE METADATA GENERATION:
+   - In the generated GeoJSON properties for EVERY plot, automatically inject standard structured mock fields:
+     * 'plot_no': (The extracted number or auto-incremented ID)
+     * 'dimensions': "30 x 40 ft" (default baseline to be updated later)
+     * 'area': "1200 sq ft" (default baseline)
+     * 'status': Automatically randomize 70% as 'Available', 15% as 'Booked', and 15% as 'Sold' for testing.
+     * 'facing': Determine dynamically based on the road orientation (North, South, East, West).
+     * 'is_corner': Detect algorithmically if the plot polygon sits on a road intersection corner block (set to true/false).
+
+5. BUILD & VERIFY IN LIVE BROWSER:
+   - Update app.js to fetch and render the newly created `plots.geojson` using our responsive Leaflet styling rules.
+   - Use your Browser Agent to spin up the server, verify that the entire map layout is completely populated with color-coded clickable shapes, and check the browser console to confirm there are zero geometry rendering errors.
