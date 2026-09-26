@@ -158,6 +158,12 @@
           <span class="hud-tooltip">Reset View</span>
         </button>
 
+        <!-- Spotlight Map Mask (80% Dark Background with 100% Layout Aperture) -->
+        <button type="button" class="hud-btn active" id="hudSpotlightBtn" title="Toggle Spotlight Map Mask (Focus on Masterplan)">
+          <span class="hud-icon">🔦</span>
+          <span class="hud-tooltip">Spotlight Mask</span>
+        </button>
+
         <!-- Blueprint Layer Settings Modal / Toggle -->
         <button type="button" class="hud-btn" id="hudBlueprintBtn" title="Adjust Blueprint CAD Opacity & Themes">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
@@ -168,12 +174,12 @@
       <!-- Floating Blueprint Cross-fade Quick Controls (Bottom-Left) -->
       <aside class="quick-blueprint-popover glass-panel" id="blueprintPopover" style="display: none;">
         <div class="popover-header">
-          <span class="popover-title">Blueprint CAD Overlay</span>
+          <span class="popover-title">Blueprint &amp; Spotlight Controls</span>
           <button class="popover-close-btn" id="closeBlueprintPopoverBtn">&times;</button>
         </div>
         <div class="popover-body">
           <div class="slider-header-row">
-            <span class="control-label">Opacity:</span>
+            <span class="control-label">CAD Opacity:</span>
             <span class="slider-percent" id="opacityDisplay">85%</span>
           </div>
           <input type="range" id="blueprintOpacitySlider" min="0" max="100" value="85" class="custom-slider" />
@@ -187,6 +193,20 @@
             <button type="button" class="theme-chip active" data-theme="white">White Glow</button>
             <button type="button" class="theme-chip" data-theme="black">Original CAD</button>
             <button type="button" class="theme-chip" data-theme="cyan">Cyan Tech</button>
+          </div>
+
+          <div style="height: 1px; background: rgba(255,255,255,0.08); margin: 8px 0;"></div>
+
+          <div class="slider-header-row">
+            <span class="control-label">Spotlight Mask Darkness:</span>
+            <span class="slider-percent" id="spotlightDisplay">80% Dark</span>
+          </div>
+          <input type="range" id="spotlightOpacitySlider" min="0" max="100" value="80" class="custom-slider" />
+          <div class="slider-bounds">
+            <button type="button" class="mask-preset" data-val="0">Off (0%)</button>
+            <button type="button" class="mask-preset" data-val="50">50%</button>
+            <button type="button" class="mask-preset active" data-val="80">80% Default</button>
+            <button type="button" class="mask-preset" data-val="95">95% Deep</button>
           </div>
         </div>
       </aside>

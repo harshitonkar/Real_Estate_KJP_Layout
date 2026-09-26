@@ -42,6 +42,23 @@ const GCP_MAPPING_MATRIX = Object.freeze([
 // Masterplan Geographic Bounding Box
 const MASTERPLAN_BOUNDS = L.latLngBounds(GCP_MAPPING_MATRIX.map(g => g.map));
 
+// Masterplan Exact Outer Boundary Polygon (13 Coordinates derived from CAD blueprint contour)
+const LAYOUT_PERIMETER_POLYGON = Object.freeze([
+  Object.freeze([15.3301726, 75.1702594]),
+  Object.freeze([15.3294822, 75.1703478]),
+  Object.freeze([15.3295084, 75.1712804]),
+  Object.freeze([15.3255531, 75.1716053]),
+  Object.freeze([15.3255938, 75.1714859]),
+  Object.freeze([15.3254185, 75.1714063]),
+  Object.freeze([15.3251961, 75.1718945]),
+  Object.freeze([15.3252685, 75.1728578]),
+  Object.freeze([15.3274460, 75.1727281]),
+  Object.freeze([15.3275385, 75.1748729]),
+  Object.freeze([15.3297924, 75.1744694]),
+  Object.freeze([15.3297483, 75.1733524]),
+  Object.freeze([15.3302297, 75.1732899])
+]);
+
 // Application State
 const appState = {
   // Filters
@@ -59,6 +76,10 @@ const appState = {
   measurePoints: [],
   measureGraphicLayers: [],
 
+  // Spotlight Map Mask (80% black background, 100% transparent aperture)
+  isSpotlightActive: true,
+  spotlightOpacity: 0.80,
+
   // Overlay settings
   blueprintOpacity: 0.85,
   blueprintTheme: 'white',
@@ -70,6 +91,7 @@ const appState = {
 // Global Map References
 let map;
 let gcpBlueprintLayer;
+let spotlightMask;
 let plotsLayerGroup;
 let labelsLayerGroup;
 let gpsMarkerGroup;
@@ -200,6 +222,154 @@ const AffineGcpBlueprintLayer = L.Layer.extend({
 });
 
 /**
+ * 4. DYNAMIC SPOTLIGHT MAP MASK ENGINE (HTML5 Canvas Compositing)
+ * Covers the entire screen/map viewport with an 80% opacity dark overlay (rgba(0, 0, 0, 0.8)),
+ * cutting out a 100% transparent, bright aperture perfectly conforming to the layout perimeter.
+ * Dynamically tracks panning, zooming, dragging, and scaling with zero lag.
+ */
+class SpotlightMapMask {
+  constructor(map, polygonLatLngs, options = {}) {
+    this.map = map;
+    this.polygonLatLngs = polygonLatLngs;
+    this.opacity = options.opacity !== undefined ? options.opacity : 0.8;
+    this.feather = options.feather !== undefined ? options.feather : 2;
+    this.enabled = options.enabled !== undefined ? options.enabled : true;
+
+    this.canvas = document.createElement('canvas');
+    this.canvas.className = 'spotlight-canvas-mask';
+    this.ctx = this.canvas.getContext('2d', { alpha: true });
+
+    this._initCanvas();
+    this._bindEvents();
+    this.render();
+  }
+
+  _initCanvas() {
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '0';
+    this.canvas.style.left = '0';
+    this.canvas.style.pointerEvents = 'none';
+    this.canvas.style.willChange = 'transform';
+
+    // Mount inside dedicated Leaflet map pane
+    if (!this.map.getPane('spotlightPane')) {
+      const pane = this.map.createPane('spotlightPane');
+      pane.style.zIndex = 240; // Positioned directly above satellite base tiles (200), below blueprint (250) and vectors (400)
+      pane.style.pointerEvents = 'none';
+    }
+    this.map.getPane('spotlightPane').appendChild(this.canvas);
+  }
+
+  _bindEvents() {
+    this._onMove = () => this.requestRender();
+    this.map.on('move zoom viewreset resize zoomanim', this._onMove);
+    window.addEventListener('resize', this._onMove);
+  }
+
+  requestRender() {
+    if (this._animId) return;
+    this._animId = requestAnimationFrame(() => {
+      this._animId = null;
+      this.render();
+    });
+  }
+
+  render() {
+    if (!this.enabled || this.opacity <= 0.01) {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      return;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const size = this.map.getSize();
+    const width = size.x;
+    const height = size.y;
+
+    // Synchronize canvas DOM element position with viewport container origin
+    const topLeft = this.map.containerPointToLayerPoint([0, 0]);
+    L.DomUtil.setPosition(this.canvas, topLeft);
+
+    if (this.canvas.width !== Math.round(width * dpr) || this.canvas.height !== Math.round(height * dpr)) {
+      this.canvas.width = Math.round(width * dpr);
+      this.canvas.height = Math.round(height * dpr);
+      this.canvas.style.width = `${width}px`;
+      this.canvas.style.height = `${height}px`;
+    }
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // 1. Clear previous frame
+    ctx.clearRect(0, 0, width, height);
+
+    // 2. Cover entire map viewport with black overlay: rgba(0, 0, 0, 0.8)
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(0, 0, 0, ${this.opacity})`;
+    ctx.fillRect(0, 0, width, height);
+
+    // 3. Switch to 'destination-out' to punch 100% transparent spotlight aperture
+    ctx.globalCompositeOperation = 'destination-out';
+
+    // 4. Project geographic polygon coordinates to current screen container pixels
+    const screenPoints = this.polygonLatLngs.map(latlng => {
+      return this.map.latLngToContainerPoint(L.latLng(latlng[0], latlng[1]));
+    });
+
+    if (screenPoints.length > 2) {
+      ctx.beginPath();
+      ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
+      for (let i = 1; i < screenPoints.length; i++) {
+        ctx.lineTo(screenPoints[i].x, screenPoints[i].y);
+      }
+      ctx.closePath();
+
+      // Punch 100% transparent hole directly through to the layout map
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+
+      // Soft crisp boundary edge feathering
+      if (this.feather > 0) {
+        ctx.lineWidth = this.feather;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+      }
+    }
+
+    // 5. Subtle vector perimeter accent glow around the spotlight boundary
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  setOpacity(opacity) {
+    this.opacity = opacity;
+    this.requestRender();
+  }
+
+  setPolygon(polygonLatLngs) {
+    this.polygonLatLngs = polygonLatLngs;
+    this.requestRender();
+  }
+
+  toggle(enabled) {
+    this.enabled = enabled !== undefined ? enabled : !this.enabled;
+    this.requestRender();
+  }
+
+  destroy() {
+    this.map.off('move zoom viewreset resize zoomanim', this._onMove);
+    window.removeEventListener('resize', this._onMove);
+    if (this.canvas.parentNode) {
+      this.canvas.parentNode.removeChild(this.canvas);
+    }
+  }
+}
+
+/**
  * 4. INITIALIZE MAP ENGINE
  */
 function initMap() {
@@ -236,6 +406,12 @@ function initMap() {
   labelsLayerGroup = L.layerGroup();
   gpsMarkerGroup = L.layerGroup().addTo(map);
   measureLayerGroup = L.layerGroup().addTo(map);
+
+  // Mount Dynamic Spotlight Map Mask (80% black background, 100% transparent layout aperture)
+  spotlightMask = new SpotlightMapMask(map, LAYOUT_PERIMETER_POLYGON, {
+    opacity: appState.spotlightOpacity,
+    enabled: appState.isSpotlightActive
+  });
 
   // Mount 6-Point GCP Blueprint Overlay
   gcpBlueprintLayer = new AffineGcpBlueprintLayer('KJP_Layout_Outline.png', GCP_MAPPING_MATRIX, {
@@ -637,7 +813,16 @@ function setupViewportHud() {
     showToast('Camera reset to masterplan center');
   });
 
-  // 5. Blueprint Layer Popover Toggle
+  // 5. Spotlight Mask HUD Button Toggle
+  const spotlightBtn = document.getElementById('hudSpotlightBtn');
+  spotlightBtn?.addEventListener('click', () => {
+    appState.isSpotlightActive = !appState.isSpotlightActive;
+    spotlightBtn.classList.toggle('active', appState.isSpotlightActive);
+    spotlightMask?.toggle(appState.isSpotlightActive);
+    showToast(appState.isSpotlightActive ? 'Spotlight Mask Active (80% Dark Background)' : 'Spotlight Mask Disabled');
+  });
+
+  // 6. Blueprint Layer Popover Toggle
   const blueprintBtn = document.getElementById('hudBlueprintBtn');
   const blueprintPopover = document.getElementById('blueprintPopover');
   const closeBlueprintPopoverBtn = document.getElementById('closeBlueprintPopoverBtn');
@@ -885,6 +1070,30 @@ function setupBlueprintControls() {
       document.querySelectorAll('.theme-chip').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
       gcpBlueprintLayer.setTheme(chip.dataset.theme);
+    });
+  });
+
+  // Spotlight Mask Darkness Slider & Presets
+  const spotlightSlider = document.getElementById('spotlightOpacitySlider');
+  const spotlightDisplay = document.getElementById('spotlightDisplay');
+
+  spotlightSlider?.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value) / 100;
+    appState.spotlightOpacity = val;
+    spotlightMask?.setOpacity(val);
+    if (spotlightDisplay) spotlightDisplay.textContent = `${Math.round(val * 100)}% Dark`;
+    document.querySelectorAll('.mask-preset').forEach(b => b.classList.remove('active'));
+  });
+
+  document.querySelectorAll('.mask-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mask-preset').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const val = parseFloat(btn.dataset.val) / 100;
+      if (spotlightSlider) spotlightSlider.value = btn.dataset.val;
+      appState.spotlightOpacity = val;
+      spotlightMask?.setOpacity(val);
+      if (spotlightDisplay) spotlightDisplay.textContent = `${btn.dataset.val}% Dark`;
     });
   });
 }

@@ -816,6 +816,41 @@ html, body {
   color: var(--accent-cyan);
 }
 
+.mask-preset {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mask-preset:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+}
+
+.mask-preset.active {
+  background: rgba(6, 182, 212, 0.2);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.spotlight-canvas-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  will-change: transform;
+  z-index: 240; /* Placed directly above satellite base tiles (200) and below layout CAD & plots */
+  transition: opacity 0.3s ease;
+}
+
 .theme-switch-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
